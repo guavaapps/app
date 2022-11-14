@@ -1,0 +1,7 @@
+{
+  "name": "spotlight-dlstmp-interface",
+  "version": "1.0.0",
+  "dependencies": {
+    "mongodb" : "latest"
+  }
+}
