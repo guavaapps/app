@@ -103,4 +103,4 @@ test_event = {
 
 response = app.lambda_handler(test_event, None)
 
-print (response)
+print(response)
