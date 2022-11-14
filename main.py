@@ -8,7 +8,6 @@ from app import app
 
 layers = keras.layers
 
-
 class LSTMPCell(layers.LSTMCell):
     def __init__(self, units):
         super(LSTMPCell, self).__init__(units)
