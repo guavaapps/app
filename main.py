@@ -1,4 +1,5 @@
 import base64
+import json
 
 import tensorflow as tf
 from tensorflow import keras
@@ -55,7 +56,7 @@ lstmp1 = LSTMP(64, return_sequences=True)(input)
 lstmp2 = LSTMP(64)(lstmp1)
 output = layers.Dense(2)(lstmp2)
 
-model = keras.Model(inputs=input, outputs=output, name="dlstmp")
+model = keras.Model(inputs=input, outputs=output, name="dlstmp2")
 
 # print ("model built")
 #
@@ -82,17 +83,19 @@ timesteps = 10
 features = 5
 look_back = 1
 epochs = 2
-timeline = tf.random.normal([timesteps, features]).numpy().tolist()
+timeline = tf.random.normal([timesteps, features]).numpy().astype("float32")  # .tolist()
 
 print(f"timeline - {timeline} {type(timeline)}")
 
+b = json.dumps({
+    "user_id": "test_spotify_id",
+    "action": "CREATE",
+    "look_back": look_back,
+    "epochs": epochs
+})
+
 test_event = {
-    "body": {
-        "user_id": "test_spotify_id",
-        "action": "GET",
-        "look_back": look_back,
-        "epochs": epochs
-    }
+    "body": base64.b64encode(b.encode())
 }
 
 # response = app.app.lambda_handler(test_event, None)
@@ -103,4 +106,17 @@ test_event = {
 
 response = app.lambda_handler(test_event, None)
 
-print(response)
+print (response)
+
+# FEATURES = 5
+#
+# input = layers.Input(shape=(look_back, FEATURES))  # 2 ts 4 f // 1, 4 ////// ts, f
+# lstmp1 = LSTMP(64, return_sequences=True)(input)
+# lstmp2 = LSTMP(64)(lstmp1)
+# output = layers.Dense(FEATURES)(lstmp2)
+#
+# model = keras.Model(inputs=input, outputs=output, name="dlstmp")
+#
+# model.compile(optimizer="adam", loss="mse")
+#
+# c = app.create_config(model, "spotify_id")

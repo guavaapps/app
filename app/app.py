@@ -1,4 +1,6 @@
 import base64
+import json
+import logging
 
 import numpy
 import tensorflow as tf
@@ -14,6 +16,9 @@ layers = keras.layers
 VERSION = "dlstmp-1.0.0"
 
 FEATURES = 5
+
+GET = ["get", "GET"]
+CREATE = ["create", "CREATE"]
 
 
 class LSTMPCell(layers.LSTMCell):
@@ -124,8 +129,8 @@ def get_timeline(client, user_id):
 def config_model(model, model_config):
     model_params = model_config["model_params"]
 
-    params = model_params["params"]
-    shapes = model_params["shapes"]
+    params = [model_param["params"] for model_param in model_params]
+    shapes = [model_param["shape"] for model_param in model_params]
 
     weights = [np.array(params[i]).reshape(shapes[i]) for i in range(len(params))]
 
@@ -144,15 +149,14 @@ def create_config(model, user_id):
         shapes.append(param.shape)
         dtypes.append(param.dtype)
 
-    model_params = {
-        "params": p,
-        "shapes": shapes
-    }
+    realm_params = [{
+        "params": param.flatten().tolist(),
+        "shape": param.shape
+    } for param in params]
 
     config = {
-        "_id": bson.ObjectId(),
-        "spotify_id": user_id,
-        "model_params": model_params
+        "_id": user_id,
+        "model_params": realm_params
     }
 
     return config
@@ -162,7 +166,7 @@ def update_config(client, config):
     spotlight = client.Spotlight
     models = spotlight.Model
 
-    models.replace_one({"spotify_id": config["spotify_id"]}, config, True)
+    models.replace_one({"_id": config["_id"]}, config, True)
 
 
 def log_invoke(user_id, action, look_back, epochs):
@@ -180,10 +184,13 @@ def log_invoke(user_id, action, look_back, epochs):
 def lambda_handler(event, context):
     # cant stop thinking about you
 
-    user_id = event["body"]["user_id"]
-    look_back = event["body"]["look_back"]
-    epochs = event["body"]["epochs"]
-    action = event["body"]["action"]
+    encoded = event["body"]
+    b = base64.b64decode(encoded)
+    body = json.loads(b)
+    user_id = body["user_id"]
+    look_back = body["look_back"]
+    epochs = body["epochs"]
+    action = body["action"]
 
     log_invoke(user_id, action, look_back, epochs)
 
@@ -192,8 +199,9 @@ def lambda_handler(event, context):
     timeline = get_timeline(client, user_id)
     if timeline is None:
         print(f"Timeline is empty - model optimisation failed, returning unoptimised model (not recommended)")
-        timeline = np.random.normal([20, FEATURES]).tolist()
+        timeline = tf.random.normal([20, FEATURES]).numpy().astype("float32").tolist()
 
+    timeline = scale_min_max(np.array(timeline))
     x, y = create_batches(timeline, look_back)
 
     input = layers.Input(shape=(look_back, FEATURES))  # 2 ts 4 f // 1, 4 ////// ts, f
@@ -205,13 +213,13 @@ def lambda_handler(event, context):
 
     config = get_model_config(client, user_id)
 
-    if not (config is None):
-        config_model(model, config)
+    # if not (config is None):
+    # config_model(model, config)
 
     model.compile(optimizer="adam", loss="mse")
 
     if action == "CREATE" and timeline is not None:
-        model.fit(x, y, epochs=epochs, batch_size=64)
+        model.fit(x, y, epochs=epochs)
 
         config = create_config(model, user_id)
         update_config(client, config)
@@ -220,9 +228,9 @@ def lambda_handler(event, context):
         config = create_config(model, user_id)
         update_config(client, config)
 
-    model.save("model")
+    model.save("/tmp/model")
 
-    converter = tf.lite.TFLiteConverter.from_saved_model("model")
+    converter = tf.lite.TFLiteConverter.from_saved_model("/tmp/model")
     converter.target_spec.supported_ops = [
         tf.lite.OpsSet.TFLITE_BUILTINS,  # enable TensorFlow Lite ops.
         tf.lite.OpsSet.SELECT_TF_OPS  # enable TensorFlow ops.
@@ -233,7 +241,7 @@ def lambda_handler(event, context):
     m = base64.b64encode(tflite_model)
 
     body = {
-        "model": m,
+        "model": m.decode("utf-8"),
         "timestamp": int(time.time_ns() / 1000),
         "version": VERSION
     }
@@ -249,4 +257,4 @@ def lambda_handler(event, context):
         "body": body
     }
 
-    return response
+    return json.dumps(response)
