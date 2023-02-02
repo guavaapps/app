@@ -88,10 +88,11 @@ timeline = tf.random.normal([timesteps, features]).numpy().astype("float32")  # 
 print(f"timeline - {timeline} {type(timeline)}")
 
 b = json.dumps({
-    "user_id": "test_spotify_id",
-    "action": "CREATE",
+    "user_id": "s37s05am9tq6uxbi8skoqwwh5::test", #test_spotify_id",
+    "action": "GET",
     "look_back": look_back,
-    "epochs": epochs
+    "epochs": epochs,
+    "timeline": timeline.tolist ()
 })
 
 test_event = {
@@ -106,7 +107,7 @@ test_event = {
 
 response = app.lambda_handler(test_event, None)
 
-print (response)
+# print (response)
 
 # FEATURES = 5
 #
